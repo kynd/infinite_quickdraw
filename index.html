@@ -77,6 +77,7 @@ function main() {
   }
 
   scope.view.onFrame = (evt)=> {
+
     if (paths.length == 0) {
       paths.push(new paper.Path());
       scale = new paper.Size(0.1, 0.1);
@@ -99,7 +100,9 @@ function main() {
     }
 
     penTipIndex ++;
-    let jump = Math.random() < 0.01;
+
+    let jump = Math.random() < 0.05;
+
     if (penTipIndex >= drawingData[drawingIndex][lineIndex][0].length ) {
       penTipIndex = 0;
       lineIndex ++;
