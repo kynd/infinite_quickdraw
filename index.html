@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+<title>Infinite quick draw</title>
+<link href="https://fonts.googleapis.com/css?family=Amatic+SC:400" rel="stylesheet">
+<style>
+body{margin:0; padding:0; font-family: 'Amatic SC', cursive; overflow:hidden; }
+#loading-text{text-align: center; height: 40px; margin:auto; padding:0; position:absolute; top:0; bottom:0; left:0; right:0;  font-size: 36px; animation: blink 1.0s cubic-bezier(.5, 0, 1, 1) infinite alternate;}
+@keyframes blink { to { opacity: 0; }}
+.hidden {display: none;}
+footer {display:inline-block; text-align: right; height: 40px; margin:auto; padding:8px 16px 0 0; position:absolute; bottom:0; right:0;  font-size: 24px; z-index:10;}
+#svg-export {display:inline-block; text-align: right; height: 24px; margin:auto; padding:6px 16px 8px 16px; position:absolute; top:8px; right:8px;  font-size: 20px; z-index:10; border: solid 1px #000000; user-select: none; cursor:pointer;}
+#svg-export:hover {background:#EEEEEE;}
+.hidden {display: none;}
+canvas {position:absolute; top:0; left:0; width: 100%; height:100%; }
+a {color: #000000;}
+</style>
+</head>
+<body>
+<canvas id="paper-canvas" resize></canvas>
+<div id="loading-text">Loading</div>
+<div id="svg-export">Export SVG</div>
+<footer><a href="https://twitter.com/kyndinfo">kynd.info</a> | data from <a href="https://quickdraw.withgoogle.com/data">Quick, Draw!</a></footer>
+
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.11.3/paper-core.min.js"></script>
+
+<script type="text/javascript">
+
+let loadingText = document.getElementById("loading-text");
+let canvas = document.getElementById("paper-canvas");
+let drawingData, dictData;
+let drawingIndex, lineIndex, penTipIndex, paths = [];
+let offset, scale, prevPenTip;
+
+let dataReq = new XMLHttpRequest();
+dataReq.open("get", "./data/data.json", true);
+dataReq.onload = (data)=>{
+  drawingData = JSON.parse(dataReq.responseText);
+  onLoadData();
+}
+dataReq.send(null);
+
+let dictReq = new XMLHttpRequest();
+dictReq.open("get", "./data/dict.json", true);
+dictReq.onload = (data)=>{
+  dictData = JSON.parse(dictReq.responseText);
+  onLoadData();
+}
+dictReq.send(null);
+
+function onLoadData() {
+  if (drawingData && dictData) { main(); }
+}
+
+function main() {
+  loadingText.setAttribute("class", "hidden");
+  let scope = new paper.PaperScope();
+  scope.setup(canvas);
+
+  window.addEventListener("resize", onResize);
+  onResize();
+
+  document.getElementById("svg-export").addEventListener("click", ()=>{
+   let fileName = "drawing.svg";
+   let url = "data:image/svg+xml;utf8," + encodeURIComponent(paper.project.exportSVG({asString:true}));
+
+   let link = document.createElement("a");
+   link.download = fileName;
+   link.href = url;
+   link.click();
+  })
+
+  scope.view.onMouseUp = ()=> {
+    clear();
+  }
+
+  scope.view.onFrame = (evt)=> {
+    if (paths.length == 0) {
+      paths.push(new paper.Path());
+      scale = new paper.Size(0.1, 0.1);
+      offset = paper.view.viewSize.subtract(new paper.Size(128, 128).multiply(scale)).divide(new paper.Size(2));
+      prevPenTip = new paper.Point(paper.view.viewSize.divide(new paper.Size(2)));
+    }
+
+    let penTip = new paper.Point(
+      drawingData[drawingIndex][lineIndex][0][penTipIndex],
+      drawingData[drawingIndex][lineIndex][1][penTipIndex])
+      .multiply(scale).add(offset);
+    let path = paths[paths.length - 1];
+    path.strokeColor = 'black'
+    path.smooth();
+    path.strokeWidth = 0.5;
+    if (path.segments.length == 0) {
+      path.moveTo(penTip);
+    } else {
+      path.lineTo(penTip);
+    }
+
+    penTipIndex ++;
+    let jump = Math.random() < 0.01;
+    if (penTipIndex >= drawingData[drawingIndex][lineIndex][0].length ) {
+      penTipIndex = 0;
+      lineIndex ++;
+      if (lineIndex >= drawingData[drawingIndex].length) {
+        jump = true;
+      } else {
+        paths.push(new paper.Path());
+      }
+    }
+
+    if (jump) {
+      let dir = penTip.subtract(prevPenTip);
+      let key = parseInt(Math.atan2(dir.y, dir.x) * 10);
+      if (dictData[key]) {
+        let i = Math.floor(Math.random() * dictData[key].length);
+        drawingIndex = dictData[key][i][0];
+        lineIndex = dictData[key][i][1];
+        penTipIndex = dictData[key][i][2];
+        sc = Math.random() + 0.1;
+        scale = new paper.Size(sc, sc);
+        let np = new paper.Point(
+          drawingData[drawingIndex][lineIndex][0][penTipIndex],
+          drawingData[drawingIndex][lineIndex][1][penTipIndex]).multiply(scale);
+        offset = penTip.subtract(np);
+      } else {
+        penTipIndex = lineIndex = 0;
+        drawingIndex = Math.floor(Math.random() * drawingData.length);
+      }
+      paths.push(new paper.Path());
+
+      if (penTip.x < 0 || penTip.x > paper.view.viewSize.width || penTip.y < 0 || penTip.y > paper.view.viewSize.height) {
+        offset = new paper.Point(Math.random() * paper.view.viewSize.width, Math.random() * paper.view.viewSize.height).subtract(new paper.Size(128, 128).multiply(scale));
+      }
+    }
+
+    prevPenTip = penTip;
+  }
+}
+
+function clear() {
+  for (let i = 0; i < paths.length; i ++) { paths[i].remove();}
+  paths = [];
+  drawingIndex = Math.floor(Math.random() * drawingData.length);
+  lineIndex = penTipIndex = 0;
+}
+
+function onResize() {
+  let w = document.documentElement.clientWidth;
+  let h = document.documentElement.clientHeight;
+  canvas.setAttribute("width", w);
+  canvas.setAttribute("height", h);
+  paper.view.viewSize = new paper.Size(w, h);
+  clear();
+}
+
+</script>
+</body>
+</html>
