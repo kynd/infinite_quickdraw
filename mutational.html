@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+<title>Mutational quick draw</title>
+<link href="https://fonts.googleapis.com/css?family=Amatic+SC:400" rel="stylesheet">
+<link rel="stylesheet" type="text/css" href="css/style.css">
+</head>
+<body>
+<canvas id="paper-canvas" resize></canvas>
+<div id="link"><a href="index.html">Directional</a>|<span class="active">Parasite</span></div>
+<div id="loading-text">Loading</div>
+<div id="svg-export">Export SVG</div>
+<footer><a href="https://twitter.com/kyndinfo">kynd.info</a> | data from <a href="https://quickdraw.withgoogle.com/data">Quick, Draw!</a></footer>
+
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.11.3/paper-core.min.js"></script>
+
+<script type="text/javascript">
+
+let loadingText = document.getElementById("loading-text");
+let canvas = document.getElementById("paper-canvas");
+let drawingData;
+let penTipIndex, insertPathIndex, insertSegmentIndex;
+let paths = [], queue = [];
+let offset, scale, rotation;
+let isDone = false, insert = false;
+
+let dataReq = new XMLHttpRequest();
+dataReq.open("get", "./data/data.json", true);
+dataReq.onload = (data)=>{
+  drawingData = JSON.parse(dataReq.responseText);
+  main();
+}
+dataReq.send(null);
+
+function main() {
+  loadingText.setAttribute("class", "hidden");
+  let scope = new paper.PaperScope();
+  scope.setup(canvas);
+
+  window.addEventListener("resize", onResize);
+  onResize();
+
+  document.getElementById("svg-export").addEventListener("click", ()=>{
+   let fileName = "drawing.svg";
+   let url = "data:image/svg+xml;utf8," + encodeURIComponent(paper.project.exportSVG({asString:true}));
+
+   let link = document.createElement("a");
+   link.download = fileName;
+   link.href = url;
+   link.click();
+  })
+
+  scope.view.onMouseUp = ()=> { clear(); }
+  clear();
+
+  scope.view.onFrame = (evt)=> {
+    if (isDone) { return; }
+
+    let penTip = new paper.Point(queue[0][0][penTipIndex], queue[0][1][penTipIndex])
+      .multiply(scale).rotate(rotation, new paper.Point(0,0)).add(offset);
+    let currentPath;
+    if (insert) {
+      currentPath = paths[insertPathIndex];
+      currentPath.insert(insertSegmentIndex, penTip);
+      insertSegmentIndex ++;
+    } else {
+      currentPath = paths[0];
+      if (currentPath.segments.length == 0) {
+        currentPath.moveTo(penTip);
+      } else {
+        currentPath.lineTo(penTip);
+      }
+    }
+    currentPath.smooth();
+    penTipIndex ++;
+
+    if (penTipIndex >= queue[0][0].length ) {
+      if (insert) {
+        paths[insertPathIndex].smooth();
+      } else {
+        paths[0].smooth();
+      }
+      insert = false;
+      penTipIndex = 0;
+      paths.unshift(new paper.Path({strokeColor:'black', strokeWidth:0.5}));
+      queue.shift();
+      if (queue.length == 0) {
+        queueNewDrawing(true);
+      }
+    }
+  }
+}
+
+function clear() {
+  for (let i = 0; i < paths.length; i ++) { paths[i].remove();}
+  paths = [];
+  let drawingIndex = Math.floor(Math.random() * drawingData.length);
+  penTipIndex = 0;
+  queueNewDrawing(false);
+}
+
+function queueNewDrawing(_insert) {
+  insert = _insert;
+  queue = [];
+  let drawingIndex = Math.floor(Math.random() * drawingData.length);
+  penTipIndex = 0;
+
+  if (!insert) {
+    rotation = 0;
+    let size = Math.min(paper.view.viewSize.width, paper.view.viewSize.height) * 0.8;
+    offset = paper.view.viewSize.subtract(new paper.Size(size, size)).divide(new paper.Size(2));
+    scale = new paper.Size(size / 256, size / 256);
+    for (let i = 0; i < drawingData[drawingIndex].length; i ++) {
+      queue.push(drawingData[drawingIndex][i]);
+    }
+    paths.unshift(new paper.Path({strokeColor:'black', strokeWidth:0.5}));
+  } else {
+    let maxPathLength = 0, lineIndex = 0;
+    for (let i = 0; i < drawingData[drawingIndex].length; i ++) {
+      let l = drawingData[drawingIndex][i];
+      let p0 = new paper.Point(l[0][0], l[0][1]);
+      let p1 = new paper.Point(l[l.length - 1][0], l[l.length - 1][1]);
+      if (p0.subtract(p1).length > maxPathLength) {
+        maxPathLength = p0.subtract(p1).length;
+        lineIndex = i;
+      }
+    }
+    //let lineIndex = Math.floor(Math.random() * drawingData[drawingIndex].length);
+    queue.push(drawingData[drawingIndex][lineIndex]);
+    for (let i = 0; i < drawingData[drawingIndex].length; i ++) {
+      if (i != lineIndex) {queue.push(drawingData[drawingIndex][i]);}
+    }
+
+    let deleteNum = 0, tryCnt = 0;
+    let maxSegLength = 0;
+    do {
+      let pIdx = Math.floor(Math.random() * paths.length);
+      let lIdx = Math.floor(1 + Math.random() * (paths[pIdx].segments.length - 1));
+
+      if (paths[pIdx] && paths[pIdx].segments.length > 1) {
+        let p0 = paths[pIdx].segments[lIdx - 1].point;
+        let p1 = paths[pIdx].segments[lIdx].point;
+        if (p0.subtract(p1).length > maxSegLength) {
+          maxSegLength = p0.subtract(p1).length;
+          insertPathIndex = pIdx;
+          insertSegmentIndex = lIdx;
+        }
+        if (tryCnt++ > 5) { break; }
+      }
+    } while (true);
+
+    /*
+    deleteNum = Math.floor(Math.random() * Math.min(2, paths[insertPathIndex].segments.length - insertSegmentIndex - 1));
+    if (deleteNum > 0) {
+      paths[insertPathIndex].removeSegments(insertSegmentIndex, insertSegmentIndex + deleteNum);
+    }
+    */
+
+    let d0 = paths[insertPathIndex].segments[insertSegmentIndex - 1].point;
+    let d1 = paths[insertPathIndex].segments[insertSegmentIndex].point;
+    let s0 = new paper.Point(queue[0][0][0], queue[0][0][1]);
+    let s1 = new paper.Point(queue[0][queue[0].length - 1][0], queue[0][queue[0].length - 1][1]);
+    let v0 = d1.subtract(d0);
+    let v1 = s1.subtract(s0);
+    let sc = v0.length / v1.length;
+    scale = new paper.Size(sc, sc);
+    rotation = v0.angle - v1.angle;
+    offset = d0.subtract(s0.multiply(scale).rotate(rotation, new paper.Point(0,0)));
+  }
+}
+
+function onResize() {
+  let w = document.documentElement.clientWidth;
+  let h = document.documentElement.clientHeight;
+  canvas.setAttribute("width", w);
+  canvas.setAttribute("height", h);
+  paper.view.viewSize = new paper.Size(w, h);
+  clear();
+}
+
+</script>
+</body>
+</html>
