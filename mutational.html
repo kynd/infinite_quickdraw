@@ -9,7 +9,7 @@
 </head>
 <body>
 <canvas id="paper-canvas" resize></canvas>
-<div id="link"><a href="index.html">Directional</a>|<span class="active">Parasite</span></div>
+<div id="link"><a href="index.html">Directional</a>|<span class="active">Mutational</span></div>
 <div id="loading-text">Loading</div>
 <div id="svg-export">Export SVG</div>
 <footer><a href="https://twitter.com/kyndinfo">kynd.info</a> | data from <a href="https://quickdraw.withgoogle.com/data">Quick, Draw!</a></footer>
@@ -24,7 +24,7 @@ let drawingData;
 let penTipIndex, insertPathIndex, insertSegmentIndex;
 let paths = [], queue = [];
 let offset, scale, rotation;
-let isDone = false, insert = false;
+let insert = false;
 
 let dataReq = new XMLHttpRequest();
 dataReq.open("get", "./data/data.json", true);
@@ -56,10 +56,9 @@ function main() {
   clear();
 
   scope.view.onFrame = (evt)=> {
-    if (isDone) { return; }
-
     let penTip = new paper.Point(queue[0][0][penTipIndex], queue[0][1][penTipIndex])
       .multiply(scale).rotate(rotation, new paper.Point(0,0)).add(offset);
+
     let currentPath;
     if (insert) {
       currentPath = paths[insertPathIndex];
@@ -74,14 +73,9 @@ function main() {
       }
     }
     currentPath.smooth();
-    penTipIndex ++;
 
+    penTipIndex ++;
     if (penTipIndex >= queue[0][0].length ) {
-      if (insert) {
-        paths[insertPathIndex].smooth();
-      } else {
-        paths[0].smooth();
-      }
       insert = false;
       penTipIndex = 0;
       paths.unshift(new paper.Path({strokeColor:'black', strokeWidth:0.5}));
@@ -127,7 +121,7 @@ function queueNewDrawing(_insert) {
         lineIndex = i;
       }
     }
-    //let lineIndex = Math.floor(Math.random() * drawingData[drawingIndex].length);
+
     queue.push(drawingData[drawingIndex][lineIndex]);
     for (let i = 0; i < drawingData[drawingIndex].length; i ++) {
       if (i != lineIndex) {queue.push(drawingData[drawingIndex][i]);}
@@ -151,13 +145,13 @@ function queueNewDrawing(_insert) {
       }
     } while (true);
 
-    /*
+    /* Delate a few segments befor inserting new segments - disabled for now
     deleteNum = Math.floor(Math.random() * Math.min(2, paths[insertPathIndex].segments.length - insertSegmentIndex - 1));
     if (deleteNum > 0) {
       paths[insertPathIndex].removeSegments(insertSegmentIndex, insertSegmentIndex + deleteNum);
     }
     */
-
+    
     let d0 = paths[insertPathIndex].segments[insertSegmentIndex - 1].point;
     let d1 = paths[insertPathIndex].segments[insertSegmentIndex].point;
     let s0 = new paper.Point(queue[0][0][0], queue[0][0][1]);
